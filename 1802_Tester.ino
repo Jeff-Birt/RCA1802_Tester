@@ -19,7 +19,18 @@ enum SYS_STATE
 	Run
 };
 
-byte virtRAM[64]; // virtual system RAM, 0x0000 to 0x0039
+// Load D with 0x55 store to Address pointed to by register 1
+// 0xF8, 0x55, 0x51, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+
+// Q blink program
+byte virtRAM[] = {	0x7A, 0xF8, 0x10, 0xB1, 0xF8, 0x00, 0xA1, 0x21,
+					0x91, 0x3A, 0x07, 0x31, 0x00, 0x7B, 0x30, 0x01,
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 }; // virtual system RAM, 0x0000 to 0x0039
 
 // gloabls
 int Start_Delay = 0;		// delay reset release 64 half clocks after start
@@ -58,6 +69,7 @@ void loop()
 {
 	if (sysState == Run)
 	{
+		// read in current state of I/O
 		newPORTA = PINA;			 // 1802 address bus
 		newPORTL = PINL;			 // 1802 status outputs
 		newSCx = PING & (SC0 | SC1); // 1802 state outputs
@@ -65,49 +77,39 @@ void loop()
 		// watch for falling/rising edge of /MRD
 		if ( !(newPORTL & MRD) && (oldPORTL & MRD) )
 		{
-			logState("/MRD");	// falling edge so,
+			//logState("/MRD");	// falling edge so,
 			portC_ModeOutput(); // enable data bus output from Arduino to 1802
 		}
 		else if ((newPORTL & MRD) && !(oldPORTL & MRD))
 		{
-			logState("MRD");	// rising edge so,
+			//logState("MRD");	// rising edge so,
 			portC_ModeInput();	// enable data bus to input to Arduino from 1802
 		}
 
-		// watch for rising edge of TPA and TPB
+		// watch for rising edge of TPA or TPB to latch in full 16-bit address
 		if ( (newPORTL & TPA) && !(oldPORTL & TPA) )
 		{
 			Address16 = newPORTA; // TPA rising edge, latch in address MSB
-			logState("TPA");
+			//logState("TPA");
 		} 
-		else if ( (newPORTL & TPB) && !(oldPORTL & TPB) ) 
+		else if ((newPORTL & TPB) && !(oldPORTL & TPB))
 		{
-			// maybe seperate the address latch section from the data read/write below
-			// the address latch needs to come first though!
 			Address16 = (Address16 << 8) | newPORTA; // TPB rising edge, read address LSB
 			//logState("TPB");
+		}
 
-			// if /MRD is low then,
-			// Arduino writing data to data bus, i.e. 1802 is reading from memory
+		// It is a bit redundent to check for the rising edge of TPB again
+		// Below, we are using it as an indication that we might need to read/write
+		// to the data bus but other decide logic could be used so we are keeping this
+		// bit of code seperate.
+		if ((newPORTL & TPB) && !(oldPORTL & TPB))
+		{
+			// if /MRD low Arduino writing to data bus, 1802 reading from memory
 			if ( !(newPORTL & MRD) )
 			{
-				// crappy way to write data to data bus based on address
-				if (Address16 == 0x00)
+				if (Address16 < 18)
 				{
-					//portC_OutputValue(0xC4); // NOP
-					portC_OutputValue(0xF8); // LDI
-					logState("LDI");
-				}
-				else if (Address16 == 0x01)
-				{
-					//portC_OutputValue(0x68); //INP0 does not exist
-					portC_OutputValue(0x55); // immedate value 0x55
-					logState("0x55");
-				}
-				else if (Address16 == 0x02)
-				{
-					portC_OutputValue(0x51); // STD (R1)
-					logState("STD R(1)");
+					portC_OutputValue(virtRAM[Address16]);
 				}
 				else
 				{
@@ -116,18 +118,26 @@ void loop()
 				}
 			}
 			// Arduino reading data from data bus, i.e. 1802 is writing to virtual memory
-			// need to save this to corret spot in virtual memory as well
 			else if ( !(newPORTL & MWR) )
 			{
 				byte fromDataBus = portC_InputValue();
 				logState(String(fromDataBus, HEX) + " Data bus");
 			}
-
-			delay(1000);
 		}
 
-		clkCount++;
-		oldPORTA = newPORTA;
+		// is Q rising?
+		if ((newPORTL & Q) && !(oldPORTL & Q))
+		{
+			logState("Q turned on");
+		}
+		else if (!(newPORTL & Q) && (oldPORTL & Q))
+		{
+			logState("Q turned off");
+		}
+
+		//delay(100);			// delay for serial debug display
+		clkCount++;				// inc clock 1/2 tick
+		oldPORTA = newPORTA;	// save new values for comparison next cycle
 		oldPORTL = newPORTL;
 		oldSCx = newSCx;
 	}

@@ -8,8 +8,7 @@
 
 #include "1802_Tester.h"
 
-// This is not finalized yet
-// used to keep track on main loop
+// This is not finalized yet, used to keep track on main loop
 enum SYS_STATE
 {
 	PwrOn,
@@ -17,6 +16,22 @@ enum SYS_STATE
 	Reset,
 	Wait,
 	Run
+};
+
+// States the control singnals can be in
+enum SIGNAL_STATE
+{
+	SIG_LOW,
+	SIG_RISING,
+	SIG_HIGH,
+	SIG_FALLING
+};
+
+enum DEBUG_STATE
+{
+	DBG_OFF,
+	DBG_OPCODE,
+	DBG_VERBOSE
 };
 
 // Memory store --- Load D with 0x55 store to Address pointed to by R(1)
@@ -73,10 +88,14 @@ int Start_Delay = 0;		// delay reset release 64 half clocks after start
 unsigned int Address16 = 0; // used to latch in full 16-bit address
 unsigned int clkCount = 0;	// counts in 1/2 clock cycles
 SYS_STATE sysState = PwrOn;
-
+SIGNAL_STATE MRD_State = SIG_LOW;
+SIGNAL_STATE MWR_State = SIG_LOW;
+SIGNAL_STATE TPA_State = SIG_LOW;
+SIGNAL_STATE TPB_State = SIG_LOW;
+DEBUG_STATE debugState = DBG_OFF;
 byte newPORTA = 0; byte oldPORTA = 0;	// not sure if oldPORTA actually needed
 byte newPORTL = 0; byte oldPORTL = 0;	// track old state, compare to new for rising/falling edges
-byte newSCx = 0; byte oldSCx = 0;		// not sure if oldSCx actually needed
+byte newSCx = 0; 						// new state of SC0 adn SC1
 
 
 // The setup() function runs once each time the micro-controller starts
@@ -97,6 +116,7 @@ void setup()
 	DDRL = ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all inputs, HIZ at this point
 
 	sysState = Initilized;
+	debugState = DBG_VERBOSE;
 
 	Serial.begin(9600); // open the serial port at 9600 bps:
 	Serial.println("Starting...");
@@ -111,38 +131,38 @@ void loop()
 		newPORTA = PINA;			 // 1802 address bus
 		newPORTL = PINL;			 // 1802 status outputs
 		newSCx = PING & (SC0 | SC1); // 1802 state outputs
-	
-		// (A) watch for falling/rising edge of /MRD to set Arduino databus direction
-		if ( !(newPORTL & MRD) && (oldPORTL & MRD) )
-		{
-			logState("/MRD");	// falling edge so,
-			portC_ModeOutput(); // enable data bus output from Arduino to 1802
-		}
-		else if ((newPORTL & MRD) && !(oldPORTL & MRD))
-		{
-			logState("MRD");	// rising edge so,
-			portC_ModeInput();	// enable data bus to input to Arduino from 1802
-		}
 
-		// (B) watch for rising edge of TPA or TPB to latch in full 16-bit address
-		if ( (newPORTL & TPA) && !(oldPORTL & TPA) )
+		// (A) Decode state of control signals
+		stateDecode();
+
+		// (B) Address latch, rising edge TPA latch MSB, rising edge TPB latch LSB
+		if (TPA_State == SIG_RISING)
 		{
-			Address16 = newPORTA; // TPA rising edge, latch in address MSB
+			Address16 = newPORTA;
 			//logState("TPA");
 		} 
-		else if ((newPORTL & TPB) && !(oldPORTL & TPB))
+		else if (TPB_State == SIG_RISING)
 		{
-			Address16 = (Address16 << 8) | newPORTA; // TPB rising edge, read address LSB
+			Address16 = (Address16 << 8) | newPORTA;
 			//logState("TPB");
 		}
 
-		// (C) While redundent to check for the rising edge of TPB again, it is an indication
-		// of reading (Arduino to 1802), or writing (1802 to Arduino)
-		if ((newPORTL & TPB) && !(oldPORTL & TPB))
+		// (C) if rising edge of /MRD or /MWR then set data bus to input from 1802
+		if ((MRD_State == SIG_RISING) | (MWR_State == SIG_RISING))
 		{
-			// if /MRD low Arduino writing to data bus, 1802 reading from memory
-			if ( !(newPORTL & MRD) )
+			portC_ModeInput();
+			logState("Data bus Input");
+		}
+
+		// (D) TPB rising edge, reading (Arduino to 1802), or writing (1802 to Arduino)
+		// if /MRD low Arduino writing to data bus, 1802 reading from memory
+		// Arduino reading data from data bus, i.e. 1802 is writing to virtual memory
+		if (TPB_State == SIG_RISING)
+		{
+			if (MRD_State == SIG_LOW)
 			{
+				portC_ModeOutput();
+
 				if (Address16 < 32)
 				{
 					portC_OutputValue(virtRAM[Address16]);
@@ -154,33 +174,32 @@ void loop()
 					logState("NOP");
 				}
 			}
-			// Arduino reading data from data bus, i.e. 1802 is writing to virtual memory
-			else if ( !(newPORTL & MWR) )
+			else if (MWR_State == SIG_LOW)
 			{
 				byte fromDataBus = portC_InputValue();
 				logState(String(fromDataBus, HEX) + " 1802 Memory Write");
 			}
 		}
 
-		// (D) reading or writing to I/O port if N0~N2 raised and TPB HIGH 
-		// /MRW indicates an input and /MRD indicates an output
-		// Arduino data bus direction set in (A) above
-		if ((newPORTL & (N0 | N1 | N2)) & !(newPORTL & TPB)) // *** rising edge of TBP?
+		// (E) reading or writing to I/O port if N0~N2 raised and
+		// /MRW falling edge indicates input from Arduino to 1802, 
+		// /MRD and TPB rising edge indicates output from 1802 to Arduino
+		if (newPORTL & (N0 | N1 | N2))
 		{
-			if (!(newPORTL & MWR)) // I/O Input from Arduino to 1802
+			if (MWR_State == SIG_FALLING)
 			{
 				portC_ModeOutput();
 				portC_OutputValue(0xAA); // fixed value at this point
 				logState(" I/O Input");
 			}
-			else if (!(newPORTL & MRD)) // I/O Output from 1802 to Arduino
+			else if (MRD_State == SIG_LOW && TPB_State == SIG_RISING)
 			{
 				byte fromDataBus = portC_InputValue();
 				logState(String(fromDataBus, HEX) + " I/O Output");
 			}
 		}
 
-		// (E) Is Q rising or falling?
+		// (F) Is Q rising or falling?
 		if ((newPORTL & Q) && !(oldPORTL & Q))
 		{
 			logState("Q turned on");
@@ -190,11 +209,10 @@ void loop()
 			logState("Q turned off");
 		}
 
-		delay(100);			// delay for serial debug display
+		delay(100);				// delay for serial debug display
 		clkCount++;				// inc clock 1/2 tick
 		oldPORTA = newPORTA;	// save new values for comparison next cycle
 		oldPORTL = newPORTL;
-		oldSCx = newSCx;
 	}
 	else if (sysState == Initilized)
 	{
@@ -212,16 +230,61 @@ void loop()
 	PORTB = PORTB ^ CLOCK; // toggle clock 1/2 tick
 }
 
+// Decodes state (rising/falling/steady) of control signals
+void stateDecode()
+{
+	if (newPORTL & TPA)
+	{
+		TPA_State = (!(oldPORTL & TPA)) ? SIG_RISING : SIG_HIGH;
+	}
+	else
+	{
+		TPA_State = (oldPORTL & TPA) ? SIG_FALLING : SIG_LOW;
+	}
+
+	if (newPORTL & TPB)
+	{
+		TPB_State = (!(oldPORTL & TPB)) ? SIG_RISING : SIG_HIGH;
+	}
+	else
+	{
+		TPB_State = (oldPORTL & TPB) ? SIG_FALLING : SIG_LOW;
+	}
+
+	if (newPORTL & MRD)
+	{
+		MRD_State = (!(oldPORTL & MRD)) ? SIG_RISING : SIG_HIGH;
+	}
+	else
+	{
+		MRD_State = (oldPORTL & MRD) ? SIG_FALLING : SIG_LOW;
+	}
+
+	if (newPORTL & MWR)
+	{
+		MWR_State = (!(oldPORTL & MWR)) ? SIG_RISING : SIG_HIGH;
+	}
+	else
+	{
+		MWR_State = (oldPORTL & MWR) ? SIG_FALLING : SIG_LOW;
+	}
+}
+
 // helper to dump current state out to serial port
 void logState(String note)
 {
-	Serial.print(clkCount, HEX); Serial.print("\t");
-	Serial.print(newSCx); Serial.print("\t");
-	Serial.print(newPORTL, HEX); Serial.print("\t");
-	Serial.print(Address16, HEX); Serial.print("\t");
-	Serial.print(PINC, HEX); Serial.print("\t");
-	Serial.println(note);
+	if (debugState == DBG_VERBOSE)
+	{
+		Serial.print(clkCount, HEX); Serial.print("\t");
+		Serial.print(newSCx); Serial.print("\t");
+		Serial.print(newPORTL, HEX); Serial.print("\t");
+		Serial.print(Address16, HEX); Serial.print("\t");
+		Serial.print(PINC, HEX); Serial.print("\t");
+		Serial.println(note);
+	}
 }
+
+#pragma region "Data Bus PORTC Helpers"
 
 // set data bus to HIZ input mode
 void portC_ModeInput(void)
@@ -247,3 +310,5 @@ void portC_OutputValue(byte value)
 {
 	PORTC = value;		// set value to output
 }
+
+#pragma endregion "Data Bus PORTC Helpers"

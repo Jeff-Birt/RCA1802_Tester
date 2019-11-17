@@ -35,6 +35,7 @@
 #define MWR			0x40	// Memory Write, active low
 #define Q			0x80	// Q flip-flop output
 
+void stateDecode();				// decode control signal state (rising/falling/steady) 
 void logState(String note);		// helper to dump current state out to serial port
 void portC_ModeInput(void);		// set data bus to HIZ input mode
 byte portC_InputValue(void);	// input byte from data bus

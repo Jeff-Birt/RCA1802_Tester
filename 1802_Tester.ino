@@ -19,18 +19,41 @@ enum SYS_STATE
 	Run
 };
 
-// Load D with 0x55 store to Address pointed to by register 1
-// 0xF8, 0x55, 0x51, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+// Memory store --- Load D with 0x55 store to Address pointed to by R(1)
+// virtual system RAM, 0x0000 to 0x0039 ->
+//byte virtRAM[] =  { 0xF8, 0x0F, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0xF8,
+//					0x55, 0x51, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
 
-// Q blink program
-byte virtRAM[] = {	0x7A, 0xF8, 0x10, 0xB1, 0xF8, 0x00, 0xA1, 0x21,
-					0x91, 0x3A, 0x07, 0x31, 0x00, 0x7B, 0x30, 0x01,
+
+// I/O Output --- Set R(1)=0x000F, Set X==R(1), Mem @ R(1) output to data bus
+// N0, N1, N2 indicate the lower nibble of the 6N Output instruction
+// virtual system RAM, 0x0000 to 0x0039 -> 
+//byte virtRAM[] =  { 0xF8, 0x0F, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0x61,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0x55,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
+
+
+// Q blink --- Q off, load 0x0010 to R(1)
+// virtual system RAM, 0x0000 to 0x0039 -> 
+byte virtRAM[] = {	0x7A, 0xF8, 0x10, 0xA1, 0xF8, 0x00, 0xB1, 0x21,
+					0x81, 0x3A, 0x07, 0x31, 0x00, 0x7B, 0x30, 0x01,
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
-					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 }; // virtual system RAM, 0x0000 to 0x0039
+					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
 
 // gloabls
 int Start_Delay = 0;		// delay reset release 64 half clocks after start
@@ -46,16 +69,18 @@ byte newSCx = 0; byte oldSCx = 0;		// not sure if oldSCx actually needed
 // The setup() function runs once each time the micro-controller starts
 void setup()
 {
-	PORTA = PORTA & ~ADD_BUS;	// all pins low for HIZ
+	PORTA = PORTA & ~ADD_BUS;	  // all pins low for HIZ
 	PORTB = ( PORTB & ~(CLEAR | CLOCK) ) | WAIT; // set to reset mode
-	PORTC = PORTC & ~DATA_BUS;	// all pins low for HIZ
+	PORTC = PORTC & ~DATA_BUS;	  // all pins low for HIZ
 	PORTG = PORTG & ~(SC0 | SC1); // all pins low for HIZ
+	PORTK = PORTK & (EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT); // all pins HI/off
 	PORTL = PORTL & ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all pins low for HIZ
 
 	DDRA = ~ADD_BUS;	// all inputs, HIZ at this point
 	DDRB = CLEAR | WAIT | CLOCK; // outputs
 	DDRC = ~DATA_BUS;	// all inputs, HIZ at this point
-	DDRG = DDRG & ~(SC0 | SC1); // inputs, HIZ at this point
+	DDRG = DDRG & ~(SC0 | SC1);  // inputs, HIZ at this point
+	DDRK = EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT; // outputs, all HI at this point
 	DDRL = ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all inputs, HIZ at this point
 
 	sysState = Initilized;
@@ -74,19 +99,19 @@ void loop()
 		newPORTL = PINL;			 // 1802 status outputs
 		newSCx = PING & (SC0 | SC1); // 1802 state outputs
 	
-		// watch for falling/rising edge of /MRD
+		// (A) watch for falling/rising edge of /MRD to set Arduino databus direction
 		if ( !(newPORTL & MRD) && (oldPORTL & MRD) )
 		{
-			//logState("/MRD");	// falling edge so,
+			logState("/MRD");	// falling edge so,
 			portC_ModeOutput(); // enable data bus output from Arduino to 1802
 		}
 		else if ((newPORTL & MRD) && !(oldPORTL & MRD))
 		{
-			//logState("MRD");	// rising edge so,
+			logState("MRD");	// rising edge so,
 			portC_ModeInput();	// enable data bus to input to Arduino from 1802
 		}
 
-		// watch for rising edge of TPA or TPB to latch in full 16-bit address
+		// (B) watch for rising edge of TPA or TPB to latch in full 16-bit address
 		if ( (newPORTL & TPA) && !(oldPORTL & TPA) )
 		{
 			Address16 = newPORTA; // TPA rising edge, latch in address MSB
@@ -98,18 +123,17 @@ void loop()
 			//logState("TPB");
 		}
 
-		// It is a bit redundent to check for the rising edge of TPB again
-		// Below, we are using it as an indication that we might need to read/write
-		// to the data bus but other decide logic could be used so we are keeping this
-		// bit of code seperate.
+		// (C) While redundent to check for the rising edge of TPB again, it is an indication
+		// of reading (Arduino to 1802), or writing (1802 to Arduino)
 		if ((newPORTL & TPB) && !(oldPORTL & TPB))
 		{
 			// if /MRD low Arduino writing to data bus, 1802 reading from memory
 			if ( !(newPORTL & MRD) )
 			{
-				if (Address16 < 18)
+				if (Address16 < 32)
 				{
 					portC_OutputValue(virtRAM[Address16]);
+					logState("1802 Memory Read");
 				}
 				else
 				{
@@ -121,7 +145,24 @@ void loop()
 			else if ( !(newPORTL & MWR) )
 			{
 				byte fromDataBus = portC_InputValue();
-				logState(String(fromDataBus, HEX) + " Data bus");
+				logState(String(fromDataBus, HEX) + " 1802 Memory Write");
+			}
+		}
+
+		// (D) reading or writing to I/O port if N0~N2 raised and TPB HIGH 
+		// /MRW indicates an input and /MRD indicates an output
+		// Arduino data bus direction set in (A) above
+		if ((newPORTL & (N0 | N1 | N2)) & !(newPORTL & TPB)) // *** rising edge of TBP?
+		{
+			if (!(newPORTL & MWR)) // I/O Input from Arduino to 1802
+			{
+				portC_OutputValue(0xAA);
+				logState(" I/O Input");
+			}
+			else if (!(newPORTL & MRD)) // I/O Output from 1802 to Arduino
+			{
+				byte fromDataBus = portC_InputValue();
+				logState(String(fromDataBus, HEX) + " I/O Output");
 			}
 		}
 
@@ -135,7 +176,7 @@ void loop()
 			logState("Q turned off");
 		}
 
-		//delay(100);			// delay for serial debug display
+		delay(100);			// delay for serial debug display
 		clkCount++;				// inc clock 1/2 tick
 		oldPORTA = newPORTA;	// save new values for comparison next cycle
 		oldPORTL = newPORTL;

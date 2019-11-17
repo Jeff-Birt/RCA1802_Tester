@@ -15,6 +15,16 @@
 #define SC0			0x01	// SC0==0->Fetch, SC0==1->Execute
 #define SC1			0x02	// 
 
+// PORT K (Outputs from Arduino)
+#define EF1			0x01	// EF1 Input
+#define EF2			0x02	// EF2 Input
+#define EF3			0x04	// EF3 Input
+#define EF4			0x08	// EF4 Input
+#define DMA_IN		0x10	// DMA Input mode flag
+#define DMA_OUT		0x20	// DMA Output mode flag
+#define INTERRUPT	0x40	// Interrupt input
+//#define OPEN		0x80	// Not used
+
 // PORT L (inputs to Arduino)
 #define N0			0x01	// I/O Control Line 0
 #define N1			0x02	// I/O Control Line 1

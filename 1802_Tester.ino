@@ -8,14 +8,15 @@
 
 #include "1802_Tester.h"
 
-// This is not finalized yet, used to keep track on main loop
+// Arduino system states
 enum SYS_STATE
 {
-	PwrOn,
-	Initilized,
-	Reset,
-	Wait,
-	Run
+	SYS_INIT,
+	SYS_RESET,
+	SYS_RUN,
+	SYS_FULL_STEP,
+	SYS_HALF_STEP,
+	SYS_STOP
 };
 
 // States the control singnals can be in
@@ -29,10 +30,12 @@ enum SIGNAL_STATE
 
 enum DEBUG_STATE
 {
-	DBG_OFF,
-	DBG_OPCODE,
-	DBG_VERBOSE
+	DB_OFF,
+	DB_MININUM,
+	DB_VERBOSE
 };
+
+#pragma region "1802 Test Programs"
 
 // Memory store --- Load D with 0x55 store to Address pointed to by R(1)
 // virtual system RAM, 0x0000 to 0x0039 ->
@@ -83,16 +86,19 @@ byte virtRAM[] =  { 0xF8, 0x0F, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0x69,
 //					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 //					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
 
+#pragma endregion "1802 Test Programs"
+
 // gloabls
 int Start_Delay = 0;		// delay reset release 64 half clocks after start
 unsigned int Address16 = 0; // used to latch in full 16-bit address
 unsigned int clkCount = 0;	// counts in 1/2 clock cycles
-SYS_STATE sysState = PwrOn;
+SYS_STATE sysState = SYS_INIT;
 SIGNAL_STATE MRD_State = SIG_LOW;
 SIGNAL_STATE MWR_State = SIG_LOW;
 SIGNAL_STATE TPA_State = SIG_LOW;
 SIGNAL_STATE TPB_State = SIG_LOW;
-DEBUG_STATE debugState = DBG_OFF;
+DEBUG_STATE debugState = DB_MININUM;
+
 byte newPORTA = 0; byte oldPORTA = 0;	// not sure if oldPORTA actually needed
 byte newPORTL = 0; byte oldPORTL = 0;	// track old state, compare to new for rising/falling edges
 byte newSCx = 0; 						// new state of SC0 adn SC1
@@ -115,17 +121,53 @@ void setup()
 	DDRK = EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT; // outputs, all HI at this point
 	DDRL = ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all inputs, HIZ at this point
 
-	sysState = Initilized;
-	debugState = DBG_VERBOSE;
-
-	Serial.begin(9600); // open the serial port at 9600 bps:
+	Serial.begin(19200); // open the serial port at 9600 bps:
 	Serial.println("Starting...");
 }
 
 // Add the main program code into the continuous loop() function
 void loop()
 {
-	if (sysState == Run)
+	// watch for input from user here, using a blocking read for now
+	if (Serial.available())
+	{
+		String command = Serial.readStringUntil('\n');
+		if (command == "run")
+		{
+			sysState = SYS_RUN;
+			Serial.println("");
+			Serial.println("Clk \tSCx \tPORTL \tAdd \tData \tNote");
+		}
+		else if (command == "stop")
+		{
+			sysState = SYS_STOP;
+			Serial.println("");
+			Serial.println("System is Stopped");
+		}
+		else if (command == "dump")
+		{
+			Serial.println("");
+			Serial.println("Memory dump 0x0000 to 0x0039");
+			sysState = SYS_STOP;
+			for (int row = 0; row < 8; row++)
+			{
+				for (int col = 0; col < 8; col++)
+				{
+					Serial.print(intToHex(virtRAM[row * 8 + col], 2));
+					Serial.print(" ");
+				}
+				Serial.println("");
+			}	
+		}
+		else if (command == "status")
+		{
+			Serial.println("");
+			Serial.println("Current Status");
+			sysState = SYS_STOP;
+		}
+	}
+
+	if (sysState == SYS_RUN)
 	{
 		// read in current state of I/O
 		newPORTA = PINA;			 // 1802 address bus
@@ -177,6 +219,10 @@ void loop()
 			else if (MWR_State == SIG_LOW)
 			{
 				byte fromDataBus = portC_InputValue();
+				if (Address16 < 64)
+				{
+					virtRAM[Address16] = fromDataBus;
+				}
 				logState(String(fromDataBus, HEX) + " 1802 Memory Write");
 			}
 		}
@@ -214,20 +260,23 @@ void loop()
 		oldPORTA = newPORTA;	// save new values for comparison next cycle
 		oldPORTL = newPORTL;
 	}
-	else if (sysState == Initilized)
+	else if (sysState == SYS_INIT)
 	{
 		// we are using this to provide a 64 clock delay from start up to reset reelase
 		Start_Delay++;
 		if (Start_Delay > 63)
 		{
 			PORTB = PORTB | CLEAR; // put in RUN mode			
-			sysState = Run;
-			Serial.println("Run Mode");
-			Serial.println("Clk \tSCx \tPORTL \tAdd \tData \tNote");
+			sysState = SYS_STOP;
+			Serial.println("");
+			Serial.println("Sytem Stopped");
 		}
 	}
 
-	PORTB = PORTB ^ CLOCK; // toggle clock 1/2 tick
+	if (sysState != SYS_STOP)
+	{
+		PORTB = PORTB ^ CLOCK; // toggle clock 1/2 tick
+	}
 }
 
 // Decodes state (rising/falling/steady) of control signals
@@ -273,13 +322,13 @@ void stateDecode()
 // helper to dump current state out to serial port
 void logState(String note)
 {
-	if (debugState == DBG_VERBOSE)
+	if (debugState != DB_OFF)
 	{
-		Serial.print(clkCount, HEX); Serial.print("\t");
+		Serial.print(intToHex(clkCount, 4)); Serial.print("\t");
 		Serial.print(newSCx); Serial.print("\t");
-		Serial.print(newPORTL, HEX); Serial.print("\t");
-		Serial.print(Address16, HEX); Serial.print("\t");
-		Serial.print(PINC, HEX); Serial.print("\t");
+		Serial.print(intToHex(newPORTL, 2)); Serial.print("\t");
+		Serial.print(intToHex(Address16, 4)); Serial.print("\t");
+		Serial.print(intToHex(PINC, 2)); Serial.print("\t");
 		Serial.println(note);
 	}
 }
@@ -312,3 +361,14 @@ void portC_OutputValue(byte value)
 }
 
 #pragma endregion "Data Bus PORTC Helpers"
+
+// Returns string representation of int in HEX with leading zeros
+// value: int to convert, places: number of digits padded with leading zeros
+String intToHex(int value, int places)
+{
+	String hexString = "000"+ String(value, HEX);
+	hexString.toUpperCase();	// make sure all upper case
+	int length = hexString.length();
+	if ( length > places) { hexString.remove(0, length - places); }
+	return hexString;  // make sure only 2 chars long
+}

@@ -41,3 +41,4 @@ void portC_ModeInput(void);		// set data bus to HIZ input mode
 byte portC_InputValue(void);	// input byte from data bus
 void portC_ModeOutput(void);	// set data bus to output mode
 void portC_OutputValue(byte value); // output a byte on the data bus
+String intToHex(int value, int places);	// convert int to hex padded #places

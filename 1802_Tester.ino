@@ -5,18 +5,24 @@
  YouTube: http://www.youtube.com/c/HeyBirt
 */
 // NOTES: Uses a Arduino Mega 2560
+// control /CLR and /WAIT 
+// what should the settings for debug view levels be?
+// A) full instruction cycle
+// B) every half clock
+// C) memory read/write
+// D) I/O input/output
 
 #include "1802_Tester.h"
 
 // Arduino system states
 enum SYS_STATE
 {
-	SYS_INIT,
-	SYS_RESET,
-	SYS_RUN,
-	SYS_FULL_STEP,
-	SYS_HALF_STEP,
-	SYS_STOP
+	SYS_INIT,		// Initialized I/O, do start delay
+	SYS_RESET,		// RESET mode: /CLEAR  WAIT
+	SYS_PAUSE,		// PAUSE mode:  CLEAR /WAIT
+	SYS_RUN,		// RUN mode:    CLEAR  WAIT
+	SYS_STEP,		// Process one opcocde then STOP mode
+	SYS_STOP		// stock clock
 };
 
 // States the control singnals can be in
@@ -65,20 +71,42 @@ enum DEBUG_STATE
 // I/O Input --- Set R(1)=0x000F, Set X=R(1), Input from data bus to Mem @ R(1)
 // N0, N1, N2 indicate the lower nibble of the 6N Output instruction
 // virtual system RAM, 0x0000 to 0x0039 -> 
-byte virtRAM[] =  { 0xF8, 0x0F, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0x69,
-					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0x55,
-					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
-					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
-					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//byte virtRAM[] =  { 0xF8, 0x0F, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0x69,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0x55,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
+
+
+// EFx input test -- output EF input # to Memory @ 0x22
+// virtual system RAM, 0x0000 to 0x0039 -> 
+byte virtRAM[] = {  0xF8, 0x22, 0xA1, 0xF8, 0x00, 0xB1, 0xE1, 0x34,
+					0x11, 0x35, 0x15, 0x36, 0x19, 0x37, 0x1D, 0x30,
+					0x07, 0xF8, 0x01, 0x30, 0x1F, 0xF8, 0x02, 0x30,
+					0x1F, 0xF8, 0x03, 0x30, 0x1F, 0xF8, 0x04, 0x51,
+					0x30, 0x07, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
 					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
-
 
 // Q blink --- Q off, load 0x0010 to R(1)
 // virtual system RAM, 0x0000 to 0x0039 -> 
 //byte virtRAM[] = {	0x7A, 0xF8, 0x10, 0xA1, 0xF8, 0x00, 0xB1, 0x21,
 //					0x81, 0x3A, 0x07, 0x31, 0x00, 0x7B, 0x30, 0x01,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4 };
+
+// NOP test - Simple NOP test, address should increase
+// virtual system RAM, 0x0000 to 0x0039 -> 
+//byte virtRAM[] = {	0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
+//					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4,
 //					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 //					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
 //					0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 
@@ -103,8 +131,8 @@ byte newPORTA = 0; byte oldPORTA = 0;	// not sure if oldPORTA actually needed
 byte newPORTL = 0; byte oldPORTL = 0;	// track old state, compare to new for rising/falling edges
 byte newSCx = 0; 						// new state of SC0 adn SC1
 
-
-// The setup() function runs once each time the micro-controller starts
+// Initalize the Arduino I/O ports, start serial coms
+// Leave processer in RESET mode: /CLEAR WAIT
 void setup()
 {
 	PORTA = PORTA & ~ADD_BUS;	  // all pins low for HIZ
@@ -125,46 +153,15 @@ void setup()
 	Serial.println("Starting...");
 }
 
-// Add the main program code into the continuous loop() function
+// Start up in RESET mode, start clock, after 64 clocks put in PAUSE mode
+// Clock count only incremetned in RUN mode.
 void loop()
 {
 	// watch for input from user here, using a blocking read for now
 	if (Serial.available())
 	{
 		String command = Serial.readStringUntil('\n');
-		if (command == "run")
-		{
-			sysState = SYS_RUN;
-			Serial.println("");
-			Serial.println("Clk \tSCx \tPORTL \tAdd \tData \tNote");
-		}
-		else if (command == "stop")
-		{
-			sysState = SYS_STOP;
-			Serial.println("");
-			Serial.println("System is Stopped");
-		}
-		else if (command == "dump")
-		{
-			Serial.println("");
-			Serial.println("Memory dump 0x0000 to 0x0039");
-			sysState = SYS_STOP;
-			for (int row = 0; row < 8; row++)
-			{
-				for (int col = 0; col < 8; col++)
-				{
-					Serial.print(intToHex(virtRAM[row * 8 + col], 2));
-					Serial.print(" ");
-				}
-				Serial.println("");
-			}	
-		}
-		else if (command == "status")
-		{
-			Serial.println("");
-			Serial.println("Current Status");
-			sysState = SYS_STOP;
-		}
+		cmdDecode(command);
 	}
 
 	if (sysState == SYS_RUN)
@@ -205,7 +202,7 @@ void loop()
 			{
 				portC_ModeOutput();
 
-				if (Address16 < 32)
+				if (Address16 < 64)
 				{
 					portC_OutputValue(virtRAM[Address16]);
 					logState("1802 Memory Read");
@@ -257,19 +254,20 @@ void loop()
 
 		delay(100);				// delay for serial debug display
 		clkCount++;				// inc clock 1/2 tick
-		oldPORTA = newPORTA;	// save new values for comparison next cycle
-		oldPORTL = newPORTL;
+		oldPORTA = newPORTA;	// not sure I need to save address bus
+		oldPORTL = newPORTL;	// save new values for comparison next cycle
 	}
 	else if (sysState == SYS_INIT)
 	{
-		// we are using this to provide a 64 clock delay from start up to reset reelase
 		Start_Delay++;
 		if (Start_Delay > 63)
 		{
-			PORTB = PORTB | CLEAR; // put in RUN mode			
-			sysState = SYS_STOP;
-			Serial.println("");
-			Serial.println("Sytem Stopped");
+			//PORTB = PORTB | CLEAR;  // PAUSE mode:  CLEAR /WAIT
+			//PORTB = PORTB & ~WAIT;	//
+			//sysState = SYS_PAUSE;
+			//Serial.println("");
+			//Serial.println("Pause Mode");
+			cmdDecode("pause");
 		}
 	}
 
@@ -319,13 +317,103 @@ void stateDecode()
 	}
 }
 
+// wonder if this should be used for changing states as well?
+void cmdDecode(String command)
+{
+	if (command == "load")
+	{
+		// Control bits: /CLEAR /WAIT
+		Serial.println();
+		Serial.println("Load Mode");
+	}
+	else if (command == "reset")
+	{
+		PORTB = PORTB & ~CLEAR; // RESET mode:  /CLEAR WAIT
+		PORTB = PORTB | WAIT;	//
+		sysState = SYS_RESET;
+
+		Serial.println();
+		Serial.println("Reset Mode");
+	}
+	else if (command == "pause")
+	{
+		PORTB = PORTB | CLEAR;  // PAUSE mode:  CLEAR /WAIT
+		PORTB = PORTB & ~WAIT;	//
+		sysState = SYS_PAUSE;
+		Serial.println();
+		Serial.println("Pause Mode");
+	}
+	else if (command == "run")
+	{
+		// start clock so processor and/or set to RUN mode
+		PORTB = PORTB | CLEAR;  // RUN mode:  CLEAR WAIT
+		PORTB = PORTB | WAIT;	//
+		sysState = SYS_RUN;
+
+		Serial.println();
+		Serial.println("Run mode");
+		Serial.println("Clk \tSCx \tCW_CL \tPORTL \tAdd \tData \tNote");
+	}
+	else if (command == "stop")
+	{
+		// stop clock so processor stops
+		sysState = SYS_STOP;
+		Serial.println();
+		Serial.println("System is Stopped");
+	}
+	else if (command == "dump")
+	{
+		// stop processor and dump virtual memory
+		Serial.println();
+		Serial.println("Memory dump 0x0000 to 0x0039");
+		sysState = SYS_STOP;
+		for (int row = 0; row < 8; row++)
+		{
+			for (int col = 0; col < 8; col++)
+			{
+				Serial.print(intToHex(virtRAM[row * 8 + col], 2));
+				Serial.print(" ");
+			}
+			Serial.println();
+		}
+		Serial.println();
+		Serial.println("System is Stopped");
+		Serial.println();
+	}
+	else if (command == "status")
+	{
+		// stop processor and show current processor status
+		// maybe combine with stop command
+		Serial.println();
+		Serial.println("Current Status");
+		Serial.println("Clk \tSCx \tCW_CL \tPORTL \tAdd \tData \tNote");
+		logState("status");
+		sysState = SYS_STOP;
+	}
+	else if (command == "help")
+	{
+		Serial.println();
+		Serial.println("List of commands");
+		Serial.println("load   - not supported");
+		Serial.println("reset  - processor in RESET mode");
+		Serial.println("pause  - processor in PAUSE mode");
+		Serial.println("run    - processor in RUN mode");
+		Serial.println("stop   - stop clock");
+		Serial.println("dump   - dump vertual memory");
+		Serial.println("status - display status, stop");
+	}
+
+}
+
 // helper to dump current state out to serial port
 void logState(String note)
 {
+	//Serial.println("Clk \tSCx \tCW_CL \tPORTL \tAdd \tData \tNote");
 	if (debugState != DB_OFF)
 	{
 		Serial.print(intToHex(clkCount, 4)); Serial.print("\t");
 		Serial.print(newSCx); Serial.print("\t");
+		Serial.print(intToHex(PORTC & (CLEAR | WAIT | CLOCK), 2)); Serial.print("\t");
 		Serial.print(intToHex(newPORTL, 2)); Serial.print("\t");
 		Serial.print(intToHex(Address16, 4)); Serial.print("\t");
 		Serial.print(intToHex(PINC, 2)); Serial.print("\t");

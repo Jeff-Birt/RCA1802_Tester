@@ -4,6 +4,11 @@
 #define ADD_BUS		0xFF	// well, the address bus of course
 
 // PORT B (Outputs from Arduino)
+// /CLEAR	/WAIT	MODE (1802)
+//	L		L		LOAD
+//	L		H		RESET
+//	H		L		PAUSE
+//	H		H		RUN
 #define CLEAR		0x01	// active low
 #define WAIT		0x02	// active Low
 #define CLOCK		0x04	// Clock input, active low
@@ -36,6 +41,7 @@
 #define Q			0x80	// Q flip-flop output
 
 void stateDecode();				// decode control signal state (rising/falling/steady) 
+void cmdDecode(String command);	// decodes commands from serial port
 void logState(String note);		// helper to dump current state out to serial port
 void portC_ModeInput(void);		// set data bus to HIZ input mode
 byte portC_InputValue(void);	// input byte from data bus

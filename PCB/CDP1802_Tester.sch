@@ -14,12 +14,12 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L Arduinos:Arduino_Mega2560_Shield_alt1 XA1
+L ArduinoMega:Arduino_Mega2560_Shield_alt1 XA1
 U 1 1 5DFF5BC5
 P 3150 3850
 F 0 "XA1" H 3150 6337 60  0000 C CNN
 F 1 "Arduino_Mega2560_Shield_alt1" H 3150 6231 60  0000 C CNN
-F 2 "Arduinos:Arduino_Mega2560_Shield_alt1" H 3850 6600 60  0001 C CNN
+F 2 "ArduinoMega:Arduino_Mega2560_Shield_alt1" H 3850 6600 60  0001 C CNN
 F 3 "https://store.arduino.cc/arduino-mega-2560-rev3" H 3850 6600 60  0001 C CNN
 	1    3150 3850
 	1    0    0    -1  

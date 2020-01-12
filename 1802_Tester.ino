@@ -14,6 +14,20 @@
 
 #include "1802_Tester.h"
 
+#define BTN1 5
+#define BTN2 4
+#define BTN3 3
+#define BTN4 2
+
+const int buttons[] = {BTN1, BTN2, BTN3, BTN4};
+#define NBUTTONS (sizeof(buttons)/sizeof(int))
+int buttonState[NBUTTONS];
+boolean isButtonRead[NBUTTONS];
+
+int lastButtonState[NBUTTONS];
+int lastDebounceTime[NBUTTONS];
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+
 // Arduino system states
 enum SYS_STATE
 {
@@ -131,6 +145,51 @@ byte newPORTA = 0; byte oldPORTA = 0;	// not sure if oldPORTA actually needed
 byte newPORTL = 0; byte oldPORTL = 0;	// track old state, compare to new for rising/falling edges
 byte newSCx = 0; 						// new state of SC0 adn SC1
 
+void readButton(int bNo) {
+	int reading = digitalRead(buttons[bNo]);
+	// If the switch changed, due to noise or pressing:
+	if (reading != lastButtonState[bNo]) {
+		// reset the debouncing timer
+		lastDebounceTime[bNo] = millis();
+	}
+
+	if ((millis() - lastDebounceTime[bNo]) > debounceDelay) {
+		// whatever the reading is at, it's been there for longer than the debounce
+		// delay, so take it as the actual current state:
+
+		// if the button state has changed:
+		if (reading != buttonState[bNo]) {
+			buttonState[bNo] = reading;
+			isButtonRead[bNo] = false;
+		}
+	}
+	lastButtonState[bNo] = reading;
+}
+
+void readButtons() {
+	for (int i=0; i<NBUTTONS; i++) {
+		readButton(i);
+	}
+}
+
+void initButtons() {
+	for (int i=0; i<NBUTTONS; i++) {
+		pinMode(buttons[i], INPUT_PULLUP);
+		buttonState[i] = HIGH;
+		lastButtonState[i] = HIGH;
+		isButtonRead[i] = true;
+	}
+}
+
+boolean hasButtonPressEvent(int bNo) {
+	if (buttonState[bNo] == LOW && !isButtonRead[bNo]) {
+		isButtonRead[bNo] = true;
+		return true;
+	} else {
+		return false;
+	}
+}
+
 // Initalize the Arduino I/O ports, start serial coms
 // Leave processer in RESET mode: /CLEAR WAIT
 void setup()
@@ -139,7 +198,7 @@ void setup()
 	PORTB = ( PORTB & ~(CLEAR | CLOCK) ) | WAIT; // set to reset mode
 	PORTC = PORTC & ~DATA_BUS;	  // all pins low for HIZ
 	PORTG = PORTG & ~(SC0 | SC1); // all pins low for HIZ
-	PORTK = PORTK & (EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT); // all pins HI/off
+	PORTK = PORTK | (EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT); // all pins HI/off
 	PORTL = PORTL & ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all pins low for HIZ
 
 	DDRA = ~ADD_BUS;	// all inputs, HIZ at this point
@@ -149,14 +208,30 @@ void setup()
 	DDRK = EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT; // outputs, all HI at this point
 	DDRL = ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all inputs, HIZ at this point
 
+	initButtons();
+
 	Serial.begin(19200); // open the serial port at 9600 bps:
 	Serial.println("Starting...");
 }
+
+void randomize_ef() {
+	int rval = random(0, 5), ef;
+	if (rval == 4) {
+		ef = 0;
+		Serial.println("No EF pin set.");
+	} else {
+		ef=1 << rval;
+		Serial.println("EF pin " + String(rval + 1) + " set.");
+	}
+	PORTK = (PORTK & ~(EF1 | EF2 | EF3 | EF4)) | ~ef;
+}
+
 
 // Start up in RESET mode, start clock, after 64 clocks put in PAUSE mode
 // Clock count only incremetned in RUN mode.
 void loop()
 {
+	readButtons();
 	// watch for input from user here, using a blocking read for now
 	if (Serial.available())
 	{
@@ -166,6 +241,10 @@ void loop()
 
 	if (sysState == SYS_RUN)
 	{
+		if (hasButtonPressEvent(0)) {
+			randomize_ef();
+		}
+    
 		// read in current state of I/O
 		newPORTA = PINA;			 // 1802 address bus
 		newPORTL = PINL;			 // 1802 status outputs
@@ -301,19 +380,23 @@ void stateDecode()
 	if (newPORTL & MRD)
 	{
 		MRD_State = (!(oldPORTL & MRD)) ? SIG_RISING : SIG_HIGH;
+		//logState("MRD " + String((MRD_State == SIG_RISING)?"RISING":"HIGH"));
 	}
 	else
 	{
 		MRD_State = (oldPORTL & MRD) ? SIG_FALLING : SIG_LOW;
+		//logState("MRD " + String((MRD_State == SIG_FALLING)?"FALLING":"LOW"));
 	}
 
 	if (newPORTL & MWR)
 	{
 		MWR_State = (!(oldPORTL & MWR)) ? SIG_RISING : SIG_HIGH;
+		//logState("MWR " + String((MWR_State == SIG_RISING)?"RISING":"HIGH"));
 	}
 	else
 	{
 		MWR_State = (oldPORTL & MWR) ? SIG_FALLING : SIG_LOW;
+		//logState("MWR " + String((MWR_State == SIG_FALLING)?"FALLING":"LOW"));
 	}
 }
 

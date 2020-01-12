@@ -40,6 +40,11 @@
 #define MWR			0x40	// Memory Write, active low
 #define Q			0x80	// Q flip-flop output
 
+#define BTN1 5				// buttons included on shield
+#define BTN2 4				// these are Arduino pin numbers
+#define BTN3 3
+#define BTN4 2
+
 void stateDecode();				// decode control signal state (rising/falling/steady) 
 void cmdDecode(String command);	// decodes commands from serial port
 void logState(String note);		// helper to dump current state out to serial port
@@ -48,3 +53,10 @@ byte portC_InputValue(void);	// input byte from data bus
 void portC_ModeOutput(void);	// set data bus to output mode
 void portC_OutputValue(byte value); // output a byte on the data bus
 String intToHex(int value, int places);	// convert int to hex padded #places
+
+const int buttons[] = { BTN1, BTN2, BTN3, BTN4 };
+#define NBUTTONS (sizeof(buttons)/sizeof(int))
+int buttonState[NBUTTONS];
+boolean isButtonRead[NBUTTONS];
+int lastButtonState[NBUTTONS];
+int lastDebounceTime[NBUTTONS];

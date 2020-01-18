@@ -3,7 +3,10 @@
  Jeffrey T. Birt (Hey Birt!)
  website: http://www.soigeneris.com
  YouTube: http://www.youtube.com/c/HeyBirt
+
+ PCB Design, button handling code, and EF ran. from: Hans Liss, Thanks Hans!
 */
+
 // NOTES: Uses a Arduino Mega 2560
 // control /CLR and /WAIT 
 // what should the settings for debug view levels be?
@@ -13,20 +16,6 @@
 // D) I/O input/output
 
 #include "1802_Tester.h"
-
-#define BTN1 5
-#define BTN2 4
-#define BTN3 3
-#define BTN4 2
-
-const int buttons[] = {BTN1, BTN2, BTN3, BTN4};
-#define NBUTTONS (sizeof(buttons)/sizeof(int))
-int buttonState[NBUTTONS];
-boolean isButtonRead[NBUTTONS];
-
-int lastButtonState[NBUTTONS];
-int lastDebounceTime[NBUTTONS];
-unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 
 // Arduino system states
 enum SYS_STATE
@@ -145,50 +134,7 @@ byte newPORTA = 0; byte oldPORTA = 0;	// not sure if oldPORTA actually needed
 byte newPORTL = 0; byte oldPORTL = 0;	// track old state, compare to new for rising/falling edges
 byte newSCx = 0; 						// new state of SC0 adn SC1
 
-void readButton(int bNo) {
-	int reading = digitalRead(buttons[bNo]);
-	// If the switch changed, due to noise or pressing:
-	if (reading != lastButtonState[bNo]) {
-		// reset the debouncing timer
-		lastDebounceTime[bNo] = millis();
-	}
-
-	if ((millis() - lastDebounceTime[bNo]) > debounceDelay) {
-		// whatever the reading is at, it's been there for longer than the debounce
-		// delay, so take it as the actual current state:
-
-		// if the button state has changed:
-		if (reading != buttonState[bNo]) {
-			buttonState[bNo] = reading;
-			isButtonRead[bNo] = false;
-		}
-	}
-	lastButtonState[bNo] = reading;
-}
-
-void readButtons() {
-	for (int i=0; i<NBUTTONS; i++) {
-		readButton(i);
-	}
-}
-
-void initButtons() {
-	for (int i=0; i<NBUTTONS; i++) {
-		pinMode(buttons[i], INPUT_PULLUP);
-		buttonState[i] = HIGH;
-		lastButtonState[i] = HIGH;
-		isButtonRead[i] = true;
-	}
-}
-
-boolean hasButtonPressEvent(int bNo) {
-	if (buttonState[bNo] == LOW && !isButtonRead[bNo]) {
-		isButtonRead[bNo] = true;
-		return true;
-	} else {
-		return false;
-	}
-}
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 
 // Initalize the Arduino I/O ports, start serial coms
 // Leave processer in RESET mode: /CLEAR WAIT
@@ -212,18 +158,6 @@ void setup()
 
 	Serial.begin(19200); // open the serial port at 9600 bps:
 	Serial.println("Starting...");
-}
-
-void randomize_ef() {
-	int rval = random(0, 5), ef;
-	if (rval == 4) {
-		ef = 0;
-		Serial.println("No EF pin set.");
-	} else {
-		ef=1 << rval;
-		Serial.println("EF pin " + String(rval + 1) + " set.");
-	}
-	PORTK = (PORTK & ~(EF1 | EF2 | EF3 | EF4)) | ~ef;
 }
 
 
@@ -488,21 +422,61 @@ void cmdDecode(String command)
 
 }
 
-// helper to dump current state out to serial port
-void logState(String note)
+
+#pragma region "Button handling code"
+
+void readButton(int bNo) 
 {
-	//Serial.println("Clk \tSCx \tCW_CL \tPORTL \tAdd \tData \tNote");
-	if (debugState != DB_OFF)
+	int reading = digitalRead(buttons[bNo]);
+	// If the switch changed, due to noise or pressing:
+	if (reading != lastButtonState[bNo]) 
 	{
-		Serial.print(intToHex(clkCount, 4)); Serial.print("\t");
-		Serial.print(newSCx); Serial.print("\t");
-		Serial.print(intToHex(PORTC & (CLEAR | WAIT | CLOCK), 2)); Serial.print("\t");
-		Serial.print(intToHex(newPORTL, 2)); Serial.print("\t");
-		Serial.print(intToHex(Address16, 4)); Serial.print("\t");
-		Serial.print(intToHex(PINC, 2)); Serial.print("\t");
-		Serial.println(note);
+		// reset the debouncing timer
+		lastDebounceTime[bNo] = millis();
+	}
+
+	if ((millis() - lastDebounceTime[bNo]) > debounceDelay) 
+	{
+		// whatever the reading is at, it's been there for longer than the debounce
+		// delay, so take it as the actual current state:
+
+		// if the button state has changed:
+		if (reading != buttonState[bNo]) 
+		{
+			buttonState[bNo] = reading;
+			isButtonRead[bNo] = false;
+		}
+	}
+	lastButtonState[bNo] = reading;
+}
+
+void readButtons() {
+	for (int i = 0; i < NBUTTONS; i++) {
+		readButton(i);
 	}
 }
+
+void initButtons() {
+	for (int i = 0; i < NBUTTONS; i++) {
+		pinMode(buttons[i], INPUT_PULLUP);
+		buttonState[i] = HIGH;
+		lastButtonState[i] = HIGH;
+		isButtonRead[i] = true;
+	}
+}
+
+boolean hasButtonPressEvent(int bNo) {
+	if (buttonState[bNo] == LOW && !isButtonRead[bNo]) {
+		isButtonRead[bNo] = true;
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+#pragma endregion "Button handling code"
+
 
 #pragma region "Data Bus PORTC Helpers"
 
@@ -532,6 +506,35 @@ void portC_OutputValue(byte value)
 }
 
 #pragma endregion "Data Bus PORTC Helpers"
+
+void randomize_ef() {
+	int rval = random(0, 5), ef;
+	if (rval == 4) {
+		ef = 0;
+		Serial.println("No EF pin set.");
+	}
+	else {
+		ef = 1 << rval;
+		Serial.println("EF pin " + String(rval + 1) + " set.");
+	}
+	PORTK = (PORTK & ~(EF1 | EF2 | EF3 | EF4)) | ~ef;
+}
+
+// helper to dump current state out to serial port
+void logState(String note)
+{
+	//Serial.println("Clk \tSCx \tCW_CL \tPORTL \tAdd \tData \tNote");
+	if (debugState != DB_OFF)
+	{
+		Serial.print(intToHex(clkCount, 4)); Serial.print("\t");
+		Serial.print(newSCx); Serial.print("\t");
+		Serial.print(intToHex(PORTC & (CLEAR | WAIT | CLOCK), 2)); Serial.print("\t");
+		Serial.print(intToHex(newPORTL, 2)); Serial.print("\t");
+		Serial.print(intToHex(Address16, 4)); Serial.print("\t");
+		Serial.print(intToHex(PINC, 2)); Serial.print("\t");
+		Serial.println(note);
+	}
+}
 
 // Returns string representation of int in HEX with leading zeros
 // value: int to convert, places: number of digits padded with leading zeros

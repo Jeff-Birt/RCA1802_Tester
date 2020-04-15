@@ -429,16 +429,11 @@ Wire Wire Line
 Wire Wire Line
 	6300 5100 4450 5100
 Wire Wire Line
-	8850 2200 8650 2200
-Wire Wire Line
-	8650 700  1100 700 
+	8850 700  8650 700 
 Wire Wire Line
 	1100 700  1100 5700
 Wire Wire Line
 	1100 5700 1850 5700
-Connection ~ 8650 2200
-Wire Wire Line
-	8650 2200 8650 700 
 Wire Wire Line
 	8750 6200 1500 6200
 Wire Wire Line
@@ -465,9 +460,7 @@ NoConn ~ 1850 3400
 NoConn ~ 1850 3500
 NoConn ~ 1850 3600
 NoConn ~ 1850 3700
-NoConn ~ 1850 4500
 NoConn ~ 1850 4600
-NoConn ~ 1850 4800
 NoConn ~ 1850 4900
 NoConn ~ 1850 5600
 NoConn ~ 1850 5800
@@ -590,15 +583,14 @@ VCC
 $Comp
 L power:VCC #PWR0101
 U 1 1 5E2F9257
-P 8850 2200
-F 0 "#PWR0101" H 8850 2050 50  0001 C CNN
-F 1 "VCC" H 8867 2373 50  0000 C CNN
-F 2 "" H 8850 2200 50  0001 C CNN
-F 3 "" H 8850 2200 50  0001 C CNN
-	1    8850 2200
+P 8850 700
+F 0 "#PWR0101" H 8850 550 50  0001 C CNN
+F 1 "VCC" H 8867 873 50  0000 C CNN
+F 2 "" H 8850 700 50  0001 C CNN
+F 3 "" H 8850 700 50  0001 C CNN
+	1    8850 700 
 	1    0    0    -1  
 $EndComp
-Connection ~ 8850 2200
 $Comp
 L power:GND #PWR0102
 U 1 1 5E2FB1AF
@@ -703,15 +695,11 @@ U 1 1 5DFFA4A2
 P 8750 3900
 F 0 "U1" H 8750 2411 50  0000 C CNN
 F 1 "CDP1802ACE" H 8750 2320 50  0000 C CNN
-F 2 "Housings_DIP:DIP-40_W15.24mm" H 8750 5800 50  0001 C CNN
+F 2 "ArduinoMega:DIP-40_W15.24mm_Socket_ZIF" H 8750 5800 50  0001 C CNN
 F 3 "http://www.cosmacelf.com/publications/data-sheets/cdp1802.pdf" H 8750 5900 50  0001 C CNN
 	1    8750 3900
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	8650 2200 8650 2500
-Wire Wire Line
-	8850 2200 8850 2500
 Wire Wire Line
 	8750 5300 8750 6200
 $Comp
@@ -729,6 +717,51 @@ Wire Wire Line
 	1850 4800 1300 4800
 Wire Wire Line
 	1300 5200 1500 5200
+Connection ~ 8650 700 
+Wire Wire Line
+	8650 700  1100 700 
+Wire Wire Line
+	1850 4500 1050 4500
+Wire Wire Line
+	1050 4500 1050 650 
+Wire Wire Line
+	1050 650  8550 650 
+$Comp
+L Connector_Generic:Conn_01x03 J1
+U 1 1 5E2EA3D6
+P 8650 1900
+F 0 "J1" V 8746 1712 50  0000 R CNN
+F 1 "Conn_01x03" V 8655 1712 50  0000 R CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 8650 1900 50  0001 C CNN
+F 3 "~" H 8650 1900 50  0001 C CNN
+	1    8650 1900
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	8650 2100 8650 2500
+Wire Wire Line
+	8550 1750 8400 1750
+Wire Wire Line
+	8400 1750 8400 2100
+Wire Wire Line
+	8400 2100 8550 2100
+Wire Wire Line
+	8550 650  8550 1750
+Wire Wire Line
+	8650 700  8650 1750
+Wire Wire Line
+	8850 2500 9100 2500
+Wire Wire Line
+	9100 2500 9100 700 
+Wire Wire Line
+	9100 700  8850 700 
+Connection ~ 8850 700 
+Wire Wire Line
+	8900 1750 8900 2100
+Wire Wire Line
+	8900 2100 8750 2100
+Wire Wire Line
+	8650 1750 8900 1750
 Wire Bus Line
 	5050 3000 5050 3700
 Wire Bus Line

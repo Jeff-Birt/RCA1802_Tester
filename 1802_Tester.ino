@@ -144,14 +144,14 @@ void setup()
 	PORTB = ( PORTB & ~(CLEAR | CLOCK) ) | WAIT; // set to reset mode
 	PORTC = PORTC & ~DATA_BUS;	  // all pins low for HIZ
 	PORTG = PORTG & ~(SC0 | SC1); // all pins low for HIZ
-	PORTK = PORTK | (EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT); // all pins HI/off
+	PORTK = PORTK | (EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT | PIN16); // all pins HI/off
 	PORTL = PORTL & ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all pins low for HIZ
 
 	DDRA = ~ADD_BUS;	// all inputs, HIZ at this point
 	DDRB = CLEAR | WAIT | CLOCK; // outputs
 	DDRC = ~DATA_BUS;	// all inputs, HIZ at this point
 	DDRG = DDRG & ~(SC0 | SC1);  // inputs, HIZ at this point
-	DDRK = EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT; // outputs, all HI at this point
+	DDRK = EF1 | EF2 | EF3 | EF4 | DMA_IN | DMA_OUT | INTERRUPT | PIN16; // outputs, all HI at this point
 	DDRL = ~(N0 | N1 | N2 | TPA | TPB | MRD | MWR | Q); // all inputs, HIZ at this point
 
 	initButtons();
@@ -165,6 +165,7 @@ void setup()
 // Clock count only incremetned in RUN mode.
 void loop()
 {
+  static int pin16state=HIGH;
 	readButtons();
 	// watch for input from user here, using a blocking read for now
 	if (Serial.available())
@@ -178,6 +179,12 @@ void loop()
 		if (hasButtonPressEvent(0)) {
 			randomize_ef();
 		}
+
+   if (hasButtonPressEvent(1)) {
+      Serial.println("Changing PIN16 from " + String(pin16state?"HIGH":"LOW") + " to " + String(pin16state?"LOW":"HIGH"));
+      pin16state = (pin16state?LOW:HIGH);
+      PORTK = (PORTK & ~PIN16) | (pin16state?PIN16:0);
+   }
     
 		// read in current state of I/O
 		newPORTA = PINA;			 // 1802 address bus

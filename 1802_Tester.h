@@ -28,7 +28,7 @@
 #define DMA_IN		0x10	// DMA Input mode flag
 #define DMA_OUT		0x20	// DMA Output mode flag
 #define INTERRUPT	0x40	// Interrupt input
-//#define OPEN		0x80	// Not used
+#define PIN16 		0x80	// Pin 16 on an 1804
 
 // PORT L (inputs to Arduino)
 #define N0			0x01	// I/O Control Line 0
